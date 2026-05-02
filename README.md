@@ -201,6 +201,48 @@ Exact wording may differ slightly depending on model output and prompts; the **k
 - **No auth:** Endpoints are open—add API keys or OAuth before production.
 - **CORS is permissive:** Suitable for local demos; tighten for deployment.
 
+## Architecture
+
+The API is intentionally small and layered so behavior stays easy to reason about and extend.
+
+- **FastAPI** exposes **`POST /generate-follow-up`** as the single integration surface for client tools and demos.
+- **Pydantic** schemas validate **request** and **response** payloads at the boundary (clear errors for malformed input).
+- The **service layer** (`app/services/follow_up_service.py`) orchestrates **OpenAI**–based CRM follow-up analysis and structured message generation (priority, type, draft, actions, reasoning).
+- **Environment variables** (including **`OPENAI_API_KEY`**) are loaded from **`.env`** via **`python-dotenv`** at startup.
+- **Swagger UI** at **`/docs`** provides interactive OpenAPI testing alongside manual clients.
+- **Automated tests** mock the AI client so CI and local runs verify HTTP behavior **without** calling OpenAI or requiring secrets.
+- This **release** accepts **simulated CRM lead data** as JSON only—there is no live CRM ingestion path yet.
+
+Request flow (high level):
+
+```
+Client / Swagger / Postman
+        ↓
+FastAPI route: POST /generate-follow-up
+        ↓
+Pydantic validation
+        ↓
+CRM follow-up service layer
+        ↓
+OpenAI API
+        ↓
+JSON response: priority, follow_up_type, summary, suggested_message, recommended_action, reasoning
+```
+
+The response also includes **`contact_name`** (echoed for traceability with downstream systems).
+
+## Limitations
+
+- This repository is a **backend portfolio project**, not a full **CRM platform**.
+- There is **no database** yet; nothing is persisted between requests.
+- **Lead history** is not stored or replayed.
+- There is **no user authentication** or tenant model yet.
+- There is **no frontend dashboard** yet.
+- There is **no integration** with live CRM tools such as **HubSpot**, **Salesforce**, **Pipedrive**, **Airtable**, or **Google Sheets** yet.
+- The service does **not send real email**; it returns draft text and recommended actions only.
+- It is intended as a **clean, local API demo** suitable for portfolio review and experimentation.
+- **Future versions** could add database storage, CRM connectors, outbound email, scheduled follow-ups, authentication, cloud deployment, and a web dashboard—building on this API contract.
+
 ## Future improvements
 
 - Retries, backoff, and request timeouts tuned per deployment; optional streaming or batched generation.
