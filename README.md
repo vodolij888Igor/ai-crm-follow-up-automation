@@ -142,6 +142,57 @@ The screenshot below shows a successful POST /generate-follow-up request in Fast
 
 ![Swagger UI successful CRM follow-up response](docs/images/swagger-crm-follow-up-code-200.png)
 
+## API usage examples
+
+Picture a **sales team or agency** managing CRM leads: prospects differ by pipeline stage, budget, days since last touch, and stated needs. To reach the right person at the right time with a coherent message, operators can call **`POST /generate-follow-up`** with structured lead data and receive priority, a draft message, a recommended action, and concise reasoning—without editing spreadsheets ad hoc.
+
+### cURL (`POST /generate-follow-up`)
+
+Run this against a **local** server (`uvicorn` on port **8000**). Set **`Content-Type: application/json`** and send a JSON body with every required field.
+
+```bash
+curl -X POST "http://127.0.0.1:8000/generate-follow-up" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contact_name": "John Smith",
+    "contact_email": "john@example.com",
+    "company_name": "Smith Roofing",
+    "lead_status": "interested",
+    "last_contact_days_ago": 5,
+    "customer_need": "Wants to automate customer follow-up emails and lead tracking.",
+    "budget_usd": 2500,
+    "preferred_tone": "professional"
+  }'
+```
+
+Ensure **`OPENAI_API_KEY`** is configured (see setup instructions); otherwise the API returns **503**. On **Windows PowerShell**, you can run the same URL and headers using **`curl.exe`** with the escaped JSON body shown in the [Sample request](#sample-request) section above, or use Postman below.
+
+### Example successful JSON response
+
+The **`suggested_message`** below is abbreviated (`"..."`); a live response contains the **full model-generated draft**.
+
+```json
+{
+  "contact_name": "John Smith",
+  "priority": "high",
+  "follow_up_type": "sales_follow_up",
+  "summary": "John Smith is interested in AI automation for follow-up emails and lead tracking.",
+  "suggested_message": "...",
+  "recommended_action": "Send follow-up email and offer a discovery call.",
+  "reasoning": "The lead has a clear business need, an available budget, and has not been contacted for 5 days."
+}
+```
+
+Exact wording may differ slightly depending on model output and prompts; the **keys** and **value shapes** remain stable.
+
+### Postman
+
+1. Create a new request: **Method** `POST`.
+2. **URL:** `http://127.0.0.1:8000/generate-follow-up`
+3. **Headers:** add `Content-Type` with value `application/json`.
+4. **Body:** choose **raw**, format **JSON**, and paste the same payload structure as in the cURL example (`contact_name`, `contact_email`, `company_name`, `lead_status`, `last_contact_days_ago`, `customer_need`, `budget_usd`, `preferred_tone`).
+5. **Send** and verify **200 OK**. In the response JSON, confirm **`contact_name`**, **`priority`**, **`follow_up_type`**, **`summary`**, **`suggested_message`**, **`recommended_action`**, and **`reasoning`** are present and sensible for the lead you submitted.
+
 ## Current limitations
 
 - **Requires OpenAI:** You need a valid API key and network access to OpenAI; rate limits and outages surface as **502** responses.
