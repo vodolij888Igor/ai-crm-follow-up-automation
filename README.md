@@ -251,6 +251,26 @@ The response also includes **`contact_name`** (echoed for traceability with down
 - Add **batch generation** and **webhooks** for async CRM workflows.
 - Introduce **A/B tone variants** and brand-specific prompt packs.
 
+## Quality checklist
+
+Delivery highlights for reviewers—each item reflects an intentional artifact or outcome in this repository.
+
+- [x] FastAPI backend implemented
+- [x] `POST /generate-follow-up` endpoint working
+- [x] Real OpenAI API integration added
+- [x] Simulated CRM lead data supported through JSON input
+- [x] Swagger UI tested successfully
+- [x] Screenshot added to README
+- [x] API usage examples included
+- [x] Automated tests added with pytest
+- [x] OpenAI calls mocked in tests
+- [x] GitHub Actions CI added
+- [x] Environment variables handled with `.env`
+- [x] `.env` excluded from GitHub
+- [x] Architecture documented
+- [x] Limitations documented
+- [x] Project pushed to GitHub
+
 ## License
 
 Use freely for portfolio and learning; add a license file if you publish publicly.
