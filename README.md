@@ -243,6 +243,33 @@ The response also includes **`contact_name`** (echoed for traceability with down
 - It is intended as a **clean, local API demo** suitable for portfolio review and experimentation.
 - **Future versions** could add database storage, CRM connectors, outbound email, scheduled follow-ups, authentication, cloud deployment, and a web dashboard—building on this API contract.
 
+## Business Value
+
+This project shows how **CRM-style lead and customer data** can be **analyzed automatically with AI** so teams spend less time deciding what to say next. The API surfaces **priority**, **professional follow-up drafts**, and a **recommended next action**, which helps **reduce missed follow-ups**, **rank urgency**, and keep outreach consistent.
+
+The same architectural pattern can extend to **sales teams**, **agencies**, **service businesses**, **consultants**, **SaaS companies**, **real estate teams**, **home services**, or **any organization** that tracks prospects in a CRM or spreadsheet and needs repeatable follow-up discipline.
+
+## Example Use Cases
+
+- Sales follow-up message generation
+- Re-engaging leads that have not responded
+- Prioritizing high-value or high-intent leads
+- Creating personalized follow-up drafts
+- Preparing CRM leads before email outreach
+- Supporting sales teams with next-action recommendations
+- Reducing missed follow-up opportunities
+- Automating lead follow-up workflows
+
+## Future CRM Integration Plan
+
+**Today**, this API accepts **simulated CRM lead payloads as JSON**—there is **no live CRM connector** in this repository.
+
+**A future iteration** could integrate with systems such as **HubSpot**, **Salesforce**, **Pipedrive**, **Airtable**, or **Google Sheets**, reading lead records, interpreting status and timing with AI, generating follow-up copy, and **writing structured results back** into CRM-native fields (for example custom properties or task notes).
+
+Illustrative fields that could be stored downstream—not implemented here—include **`priority`**, **`follow_up_type`**, **`suggested_message`**, **`recommended_action`**, plus operational metadata such as **`assigned_owner`**, **`follow_up_due_date`**, and **`processed_at`**.
+
+Later releases could add **scheduled follow-ups**, **transactional email**, **durable lead history**, **authentication**, **hosted deployment**, and a **frontend dashboard**—still anchored on the same JSON contract this service exposes today.
+
 ## Future improvements
 
 - Retries, backoff, and request timeouts tuned per deployment; optional streaming or batched generation.
