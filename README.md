@@ -62,6 +62,15 @@ Sales and success teams lose deals when follow-ups are late, generic, or unprior
 
 6. **Explore docs:** open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) for interactive OpenAPI (Swagger UI).
 
+### Running tests
+
+Automated tests mock the OpenAI client—no real API key or network call is required.
+
+```bash
+pip install -r requirements.txt
+pytest
+```
+
 ## API
 
 ### `POST /generate-follow-up`
