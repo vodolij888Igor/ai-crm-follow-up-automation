@@ -60,7 +60,7 @@ class FollowUpRequest(BaseModel):
 
 
 class FollowUpResponse(BaseModel):
-    """AI-ready follow-up plan returned to the caller (placeholder logic in v1)."""
+    """Structured follow-up plan from OpenAI (validated at the API boundary)."""
 
     contact_name: str = Field(..., description="Echo of the contact for traceability.")
     priority: Literal["low", "medium", "high"] = Field(
@@ -69,14 +69,17 @@ class FollowUpResponse(BaseModel):
     )
     follow_up_type: str = Field(
         ...,
-        description="Category of follow-up (e.g. sales_follow_up, nurture).",
+        description=(
+            "Category of follow-up (e.g. sales_follow_up, re_engagement, payment_follow_up, "
+            "onboarding_follow_up, support_follow_up, general_follow_up)."
+        ),
     )
     summary: str = Field(..., description="One-line context for humans or downstream AI.")
     suggested_message: str = Field(..., description="Draft message aligned with preferred_tone.")
     recommended_action: str = Field(..., description="Concrete next step for the rep or workflow.")
     reasoning: str = Field(
         ...,
-        description="Short justification for priority and action (placeholder rules in v1).",
+        description="Short justification for priority, type, and recommended action.",
     )
 
     model_config = {

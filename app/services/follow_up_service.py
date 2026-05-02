@@ -1,136 +1,179 @@
 """
-Follow-up plan generation (placeholder implementation).
+CRM follow-up plan generation via OpenAI.
 
-v1 uses deterministic rules so the API is stable without calling an LLM.
-Replace this module's core logic with an AI provider when you are ready.
+Produces structured JSON aligned with `FollowUpResponse`. Missing configuration or
+upstream failures surface as explicit exceptions for the API layer to map to HTTP status codes.
 """
 
-from typing import Literal
+from __future__ import annotations
+
+import json
+import logging
+import os
+from typing import Any
+
+from dotenv import load_dotenv
+from openai import APIError, OpenAI
 
 from app.schemas.follow_up_schema import FollowUpRequest, FollowUpResponse
 
-# Heuristic thresholds — tune or replace when integrating real scoring / AI.
-_BUDGET_HIGH_USD = 2000
-_DAYS_STALE_FOR_HIGH_PRIORITY = 3
+logger = logging.getLogger(__name__)
+
+# Load `.env` early so imports/tests that skip `main` still see variables.
+load_dotenv()
+
+ALLOWED_FOLLOW_UP_TYPES = frozenset(
+    {
+        "sales_follow_up",
+        "re_engagement",
+        "payment_follow_up",
+        "onboarding_follow_up",
+        "support_follow_up",
+        "general_follow_up",
+    }
+)
+ALLOWED_PRIORITY = frozenset({"low", "medium", "high"})
+
+DEFAULT_MODEL = "gpt-4o-mini"
 
 
-def _normalize_status(status: str) -> str:
-    return status.strip().lower()
+class MissingOpenAIConfigurationError(Exception):
+    """OPENAI_API_KEY is unset or empty; API maps this to HTTP 503."""
+
+    def __init__(self, message: str = "OPENAI_API_KEY is not set or is empty.") -> None:
+        self.message = message
+        super().__init__(message)
 
 
-def _compute_priority(payload: FollowUpRequest) -> tuple[Literal["low", "medium", "high"], str]:
-    """
-    Returns (priority, reasoning_fragment).
+class OpenAIInvocationError(Exception):
+    """OpenAI request failed or returned unusable output; API maps this to HTTP 502."""
 
-    Simple rule engine: budget + recency + pipeline stage drive urgency.
-    """
-    status = _normalize_status(payload.lead_status)
-    days = payload.last_contact_days_ago
-    budget = float(payload.budget_usd)
-
-    if status in ("cold", "lost", "disqualified"):
-        return (
-            "low",
-            f"The lead is marked as '{payload.lead_status}', so urgency is reduced.",
-        )
-
-    if budget >= _BUDGET_HIGH_USD and days >= _DAYS_STALE_FOR_HIGH_PRIORITY:
-        return (
-            "high",
-            "The lead has a clear budget signal and has gone several days without contact.",
-        )
-
-    if days >= 7 or budget >= _BUDGET_HIGH_USD:
-        return (
-            "medium",
-            "Either budget or time since last touch suggests a timely follow-up.",
-        )
-
-    return (
-        "medium",
-        "Standard follow-up cadence applies based on status and recency.",
-    )
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
 
 
-def _follow_up_type_for_status(status: str) -> str:
-    s = _normalize_status(status)
-    if s in ("cold", "nurture"):
-        return "nurture"
-    if s in ("qualified", "proposal", "negotiation"):
-        return "advance_deal"
-    return "sales_follow_up"
+_SYSTEM_PROMPT = """You are a CRM follow-up assistant for B2B sales and customer success.
+
+Given lead fields (JSON in the user message), analyze urgency, intent, and context.
+
+Respond with ONE JSON object only (no markdown fences). Use exactly these keys:
+- contact_name: string (must match the input contact_name exactly)
+- priority: one of "low", "medium", "high"
+- follow_up_type: one of:
+  "sales_follow_up", "re_engagement", "payment_follow_up", "onboarding_follow_up",
+  "support_follow_up", "general_follow_up"
+- summary: one concise sentence for operators or downstream automation
+- suggested_message: email-style draft; honor preferred_tone (professional, friendly, concise, formal)
+- recommended_action: single concrete next step for a rep or workflow
+- reasoning: 2–4 sentences explaining priority and follow_up_type from the data
+
+Rules:
+- Ground reasoning in budget_usd, last_contact_days_ago, lead_status, and customer_need.
+- Do not invent private facts; stay within the supplied fields.
+- suggested_message should address the contact by first name when natural."""
 
 
-def _opening_for_tone(first_name: str, tone: str) -> str:
-    if tone == "formal":
-        return f"Dear {first_name},"
-    if tone == "friendly":
-        return f"Hi {first_name} — hope you're doing well!"
-    if tone == "concise":
-        return f"Hi {first_name},"
-    return f"Hi {first_name},"
+def _get_api_key() -> str:
+    key = os.environ.get("OPENAI_API_KEY")
+    if key is None or not str(key).strip():
+        raise MissingOpenAIConfigurationError()
+    return str(key).strip()
 
 
-def _build_suggested_message(payload: FollowUpRequest) -> str:
-    """Assemble a template draft; real AI would personalize further."""
-    first = payload.contact_name.split()[0] if payload.contact_name else "there"
-    opening = _opening_for_tone(first, payload.preferred_tone)
-    need = payload.customer_need.strip().rstrip(".")
-    company = payload.company_name
-
-    # Neutral template — keeps grammar sane whether the need is a fragment or a full sentence.
-    body = (
-        f"I wanted to follow up with you at {company} about the following: {need}. "
-        f"I'd love to share how we can help and answer any questions."
-    )
-    closing = (
-        "Would you have 20 minutes this week for a quick discovery call?"
-        if payload.preferred_tone != "concise"
-        else "Open to a brief call this week?"
-    )
-    return f"{opening} {body} {closing}"
+def _model_name() -> str:
+    return os.environ.get("OPENAI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
 
 
-def _recommended_action(priority: str, follow_up_type: str) -> str:
-    if follow_up_type == "nurture":
-        return "Add to a nurture sequence and send a value-focused touchpoint."
-    if follow_up_type == "advance_deal":
-        return "Schedule a call to align on scope, timeline, and next steps."
-    if priority == "high":
-        return "Send follow-up email and offer a discovery call."
-    return "Send a personalized follow-up and propose a time to connect."
+def _lead_payload_dict(payload: FollowUpRequest) -> dict[str, Any]:
+    return {
+        "contact_name": payload.contact_name,
+        "contact_email": str(payload.contact_email),
+        "company_name": payload.company_name,
+        "lead_status": payload.lead_status,
+        "last_contact_days_ago": payload.last_contact_days_ago,
+        "customer_need": payload.customer_need,
+        "budget_usd": payload.budget_usd,
+        "preferred_tone": payload.preferred_tone,
+    }
+
+
+def _normalize_llm_dict(data: dict[str, Any], payload: FollowUpRequest) -> dict[str, Any]:
+    """Coerce enums and enforce contact_name echo before Pydantic validation."""
+    out = dict(data)
+    p = out.get("priority", "medium")
+    if p not in ALLOWED_PRIORITY:
+        out["priority"] = "medium"
+    else:
+        out["priority"] = p
+
+    t = out.get("follow_up_type", "general_follow_up")
+    if t not in ALLOWED_FOLLOW_UP_TYPES:
+        out["follow_up_type"] = "general_follow_up"
+    else:
+        out["follow_up_type"] = t
+
+    out["contact_name"] = payload.contact_name
+    return out
+
+
+def _extract_message_content(raw: object) -> str:
+    if raw is None:
+        raise OpenAIInvocationError("OpenAI returned no message content.")
+    text = str(raw).strip()
+    if not text:
+        raise OpenAIInvocationError("OpenAI returned empty message content.")
+    return text
 
 
 def generate_follow_up_plan(payload: FollowUpRequest) -> FollowUpResponse:
     """
-    Produce a follow-up plan from CRM-style fields.
+    Call OpenAI to produce a follow-up plan matching `FollowUpResponse`.
 
-    This is intentionally deterministic for portfolio demos and tests.
+    Raises:
+        MissingOpenAIConfigurationError: when OPENAI_API_KEY is missing (HTTP 503 at API layer).
+        OpenAIInvocationError: when the provider fails or output cannot be parsed (HTTP 502).
     """
-    priority, budget_reason = _compute_priority(payload)
-    follow_up_type = _follow_up_type_for_status(payload.lead_status)
+    api_key = _get_api_key()
+    model = _model_name()
+    client = OpenAI(api_key=api_key, timeout=60.0)
 
-    need_snippet = payload.customer_need.strip().rstrip(".")
-    status_word = _normalize_status(payload.lead_status)
-    summary = (
-        f"{payload.contact_name} from {payload.company_name} is {status_word}: {need_snippet}."
-    )
+    user_content = json.dumps(_lead_payload_dict(payload), ensure_ascii=False)
 
-    suggested = _build_suggested_message(payload)
-    action = _recommended_action(priority, follow_up_type)
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.35,
+        )
+    except APIError as exc:
+        logger.exception("OpenAI API error: %s", exc)
+        raise OpenAIInvocationError(
+            "The OpenAI API request failed or returned an error. Try again later."
+        ) from exc
 
-    days = payload.last_contact_days_ago
-    reasoning = (
-        f"{budget_reason} Last contact was {days} day(s) ago; "
-        f"budget signal is around ${float(payload.budget_usd):,.0f}."
-    )
+    try:
+        choice = completion.choices[0]
+        content = _extract_message_content(choice.message.content)
+        parsed = json.loads(content)
+    except (IndexError, KeyError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        logger.exception("Failed to parse OpenAI response: %s", exc)
+        raise OpenAIInvocationError(
+            "OpenAI returned a response that could not be parsed as structured JSON."
+        ) from exc
 
-    return FollowUpResponse(
-        contact_name=payload.contact_name,
-        priority=priority,
-        follow_up_type=follow_up_type,
-        summary=summary,
-        suggested_message=suggested,
-        recommended_action=action,
-        reasoning=reasoning,
-    )
+    if not isinstance(parsed, dict):
+        raise OpenAIInvocationError("OpenAI returned JSON that is not an object.")
+
+    try:
+        normalized = _normalize_llm_dict(parsed, payload)
+        return FollowUpResponse.model_validate(normalized)
+    except Exception as exc:
+        logger.exception("Validation failed for OpenAI output: %s", exc)
+        raise OpenAIInvocationError(
+            "OpenAI returned JSON that did not match the expected follow-up plan shape."
+        ) from exc

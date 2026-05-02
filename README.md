@@ -4,7 +4,7 @@ Portfolio backend for **AI Automation Engineer**, **AI Integration Developer**, 
 
 ## Project overview
 
-This service simulates the “brain” of a follow-up assistant: it takes what you know about a lead (name, company, status, need, budget, recency) and returns **priority**, **message draft**, **recommended next action**, and short **reasoning**. Version **0.1.0** uses **placeholder rules** in code—no live LLM and no database—so the contract is stable and easy to demo.
+This service simulates the “brain” of a follow-up assistant: it takes what you know about a lead (name, company, status, need, budget, recency) and returns **priority**, **message draft**, **recommended next action**, and short **reasoning**. **`POST /generate-follow-up` uses the OpenAI API** to analyze the lead and produce a structured, CRM-ready follow-up plan (JSON in / JSON out). There is no database; state is sent on each request.
 
 ## Business use case
 
@@ -21,7 +21,8 @@ Sales and success teams lose deals when follow-ups are late, generic, or unprior
 | API          | [FastAPI](https://fastapi.tiangolo.com/) |
 | Validation   | [Pydantic v2](https://docs.pydantic.dev/) |
 | Server       | [Uvicorn](https://www.uvicorn.org/) |
-| Config (future) | `pydantic-settings`, `python-dotenv` |
+| AI           | [OpenAI API](https://platform.openai.com/) (chat completions, JSON output) |
+| Config       | `python-dotenv` (`.env`), optional `pydantic-settings` |
 
 ## Setup instructions
 
@@ -51,7 +52,7 @@ Sales and success teams lose deals when follow-ups are late, generic, or unprior
    pip install -r requirements.txt
    ```
 
-4. **Optional:** copy `.env.example` to `.env` for future API keys (not required for v1).
+4. **Configure OpenAI:** copy `.env.example` to `.env` and set `OPENAI_API_KEY` (required for `POST /generate-follow-up`). Optionally set `OPENAI_MODEL` (defaults to `gpt-4o-mini` if unset).
 
 5. **Run the API**
 
@@ -101,7 +102,7 @@ On macOS/Linux, use `\` for line continuation instead of `^`.
 
 ### Sample response
 
-Field wording may vary slightly depending on placeholder rules; shape is stable.
+Wording comes from the model and will vary by lead and prompt; the **response shape** is stable. `priority` is always `low`, `medium`, or `high`. `follow_up_type` is one of: `sales_follow_up`, `re_engagement`, `payment_follow_up`, `onboarding_follow_up`, `support_follow_up`, `general_follow_up`.
 
 ```json
 {
@@ -115,7 +116,14 @@ Field wording may vary slightly depending on placeholder rules; shape is stable.
 }
 ```
 
-The response shape is stable; exact wording follows the placeholder rules in `app/services/follow_up_service.py` and may change if you tune thresholds.
+The response shape is fixed; text fields are **OpenAI-generated** from your request and the system prompt in `app/services/follow_up_service.py`.
+
+### Errors
+
+| HTTP status | When |
+| ----------- | ---- |
+| **503** | `OPENAI_API_KEY` is missing or empty (`detail` explains configuration). |
+| **502** | OpenAI request failed, or the model returned output that could not be parsed or validated. |
 
 ## Screenshot
 
@@ -125,7 +133,7 @@ The screenshot below shows a successful POST /generate-follow-up request in Fast
 
 ## Current limitations
 
-- **No LLM:** Messages and reasoning come from **fixed rules**, not generative AI.
+- **Requires OpenAI:** You need a valid API key and network access to OpenAI; rate limits and outages surface as **502** responses.
 - **No persistence:** Nothing is stored; each request is stateless.
 - **No CRM connector:** Leads are simulated by posting JSON; no HubSpot/Salesforce sync.
 - **No auth:** Endpoints are open—add API keys or OAuth before production.
@@ -133,7 +141,7 @@ The screenshot below shows a successful POST /generate-follow-up request in Fast
 
 ## Future improvements
 
-- Swap `follow_up_service` internals for **OpenAI** (or another provider) with retries, timeouts, and cost controls.
+- Retries, backoff, and request timeouts tuned per deployment; optional streaming or batched generation.
 - Add **OAuth2 / API keys** and rate limiting.
 - Persist leads and outcomes in **PostgreSQL** or a CRM webhook pipeline.
 - Add **batch generation** and **webhooks** for async CRM workflows.
