@@ -117,6 +117,12 @@ Field wording may vary slightly depending on placeholder rules; shape is stable.
 
 The response shape is stable; exact wording follows the placeholder rules in `app/services/follow_up_service.py` and may change if you tune thresholds.
 
+## Screenshot
+
+The screenshot below shows a successful POST /generate-follow-up request in FastAPI Swagger UI with a 200 response.
+
+![Swagger UI successful CRM follow-up response](docs/images/swagger-crm-follow-up-code-200.png)
+
 ## Current limitations
 
 - **No LLM:** Messages and reasoning come from **fixed rules**, not generative AI.
