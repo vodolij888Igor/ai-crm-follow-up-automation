@@ -1,5 +1,7 @@
 # AI CRM Follow-up Automation
 
+[![Tests](https://github.com/vodolij888Igor/ai-crm-follow-up-automation/actions/workflows/tests.yml/badge.svg)](https://github.com/vodolij888Igor/ai-crm-follow-up-automation/actions/workflows/tests.yml)
+
 Portfolio backend for **AI Automation Engineer**, **AI Integration Developer**, **Full-Stack AI Product Developer**, and **AI Creator** roles. It exposes a single API that accepts CRM-style lead JSON and returns a structured follow-up plan suitable for human reps or downstream automation.
 
 ## Project overview
